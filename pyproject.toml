@@ -28,8 +28,13 @@ select = [
     "I",   # isort
     "B",   # flake8-bugbear
     "C4",  # flake8-comprehensions
-    "UP",  # pyupgrade
+    "TCH", # flake8-type-checking
 ]
+
+[tool.ruff.lint.flake8-type-checking]
+# Prefer typing imports over collections.abc
+runtime-evaluated-base-classes = []
+runtime-evaluated-decorators = []
 
 [tool.ruff.format]
 # Use single quotes for strings
