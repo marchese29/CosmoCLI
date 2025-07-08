@@ -8,12 +8,13 @@ dependencies = [
     "aws-sdk-bedrock-runtime>=0.0.2",
     "dotenv>=0.9.9",
     "pyaudio>=0.2.14",
+    "pydantic>=2.11.7",
 ]
 
 [dependency-groups]
 dev = [
     "pyright>=1.1.402",
-    "ruff>=0.12.1",
+    "ruff>=0.12.2",
 ]
 
 [tool.ruff]
