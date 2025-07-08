@@ -1,7 +1,7 @@
 [project]
 name = "cosmocli"
 version = "0.1.0"
-description = "Add your description here"
+description = "One client for the Cosmo home assistant"
 readme = "README.md"
 requires-python = ">=3.12"
 dependencies = [
