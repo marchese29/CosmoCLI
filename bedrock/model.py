@@ -60,13 +60,17 @@ class ToolUseOutputConfiguration(BedrockEventModel):
 
 # Tool Configuration Models
 class InputSchema(BedrockEventModel):
-    json_schema: dict[str, Any] = Field(alias='json')
+    json_schema: str = Field(alias='json')
 
 
-class ToolSpec(BedrockEventModel):
+class ToolSpecPayload(BedrockEventModel):
     name: str
     description: str
     input_schema: InputSchema
+
+
+class ToolSpec(BedrockEventModel):
+    tool_spec: ToolSpecPayload
 
 
 class ToolConfiguration(BedrockEventModel):
@@ -154,10 +158,14 @@ class PromptEnd(BedrockEventModel):
     prompt_end: PromptEndPayload
 
 
-class ToolResult(BedrockEventModel):
+class ToolResultPayload(BedrockEventModel):
     prompt_name: str
     content_name: str
     content: str  # JSON string of the tool result
+
+
+class ToolResult(BedrockEventModel):
+    tool_result: ToolResultPayload
 
 
 ###############################
@@ -215,7 +223,7 @@ class ToolUseEvent(CompletionEvent):
     """Tool use event."""
 
     content_id: str
-    content: dict[str, Any]
+    content: str
     tool_name: str
     tool_use_id: str
 

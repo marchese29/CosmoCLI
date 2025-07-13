@@ -6,19 +6,23 @@ import sys
 from dotenv import load_dotenv
 
 from bedrock.stream import BedrockStreamManager
+from tools import server_is_connected
 
 load_dotenv()
 root = logging.getLogger()
 root.setLevel(logging.INFO)
 handler = logging.StreamHandler(sys.stdout)
 handler.setLevel(logging.INFO)
-formatter = logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s')
+formatter = logging.Formatter('%(asctime)s - (%(name)s) - [%(levelname)s] - %(message)s')
 handler.setFormatter(formatter)
 root.addHandler(handler)
 
 
 async def main(system_prompt: str):
     """Main entry point for the program"""
+
+    if not await server_is_connected():
+        sys.exit('Cosmo Server not running')
 
     async with BedrockStreamManager(system_prompt):
         # Wait for the user to hit enter

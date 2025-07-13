@@ -1,3 +1,4 @@
+# ruff: noqa: F405 - star import uses are okay here
 import asyncio
 import base64
 import json
@@ -25,36 +26,8 @@ from pydantic import BaseModel
 from smithy_aws_core.credentials_resolvers import EnvironmentCredentialsResolver
 
 from audio import AudioInterface
-from bedrock.model import (
-    AudioInput,
-    AudioInputConfiguration,
-    AudioInputPayload,
-    AudioOutputConfiguration,
-    AudioOutputEvent,
-    BidirectionalStreamEvent,
-    ContentEnd,
-    ContentEndPayload,
-    ContentStart,
-    ContentStartPayload,
-    InferenceConfiguration,
-    PromptEnd,
-    PromptEndPayload,
-    PromptStart,
-    PromptStartPayload,
-    SessionEnd,
-    SessionEndPayload,
-    SessionStart,
-    SessionStartPayload,
-    StreamEventHandler,
-    TextInput,
-    TextInputConfiguration,
-    TextInputPayload,
-    TextOutputConfiguration,
-    TextOutputEvent,
-    ToolConfiguration,
-    ToolUseEvent,
-    ToolUseOutputConfiguration,
-)
+from bedrock.model import *  # noqa: F403 - way too many imports
+from tools import nova_tools
 
 logger = logging.getLogger(__name__)
 
@@ -98,6 +71,12 @@ class BedrockStreamManager(StreamEventHandler):
         self._prompt_name = str(uuid.uuid4())
         self._content_name = str(uuid.uuid4())
         self._audio_content_name = str(uuid.uuid4())
+
+        # Tool Usage
+        self._tool_tasks: dict[str, asyncio.Task[None]] = {}
+        self._tool_name = ''
+        self._tool_use_id = ''
+        self._tool_use_content = ''
 
     async def _send_event(self, event_model: BaseModel):
         logger.debug('Sending event of type %s', event_model.__class__.__name__)
@@ -191,21 +170,74 @@ class BedrockStreamManager(StreamEventHandler):
         except asyncio.CancelledError:
             # Task was cancelled, exit gracefully
             logger.info('🛑 Audio input processing cancelled')
-            pass
-        except Exception:
+        except Exception as e:
             # TODO: Handle other exceptions appropriately
-            logger.error('❌ Error in audio input processing')
+            logger.error('❌ Error in audio input processing', exc_info=e)
             traceback.print_exc()
 
+    async def _send_tool_result(self, tool_use_id: str, content: str, content_name: str):
+        await self._send_event(
+            ContentStart(
+                content_start=ContentStartPayload(
+                    prompt_name=self._prompt_name,
+                    content_name=content_name,
+                    interactive=False,
+                    type='TOOL',
+                    role='TOOL',
+                    tool_result_input_configuration=ToolResultInputConfiguration(
+                        tool_use_id=tool_use_id,
+                        type='TEXT',
+                        text_input_configuration=TextInputConfiguration(),
+                    ),
+                )
+            )
+        )
+        await self._send_event(
+            ToolResult(
+                tool_result=ToolResultPayload(
+                    prompt_name=self._prompt_name,
+                    content_name=content_name,
+                    content=json.dumps({'content': content}),
+                )
+            )
+        )
+        await self._send_event(
+            ContentEnd(
+                content_end=ContentEndPayload(
+                    prompt_name=self._prompt_name, content_name=content_name
+                )
+            )
+        )
+
+    async def _execute_tool(
+        self, tool_name: str, tool_use_id: str, tool_content: str, content_name: str
+    ):
+        try:
+            logger.info(f'🔧 Executing tool "{tool_name}"')
+            result = await nova_tools.invoke_agent(tool_name, tool_content)
+            logger.debug(f'🔧 Tool "{tool_name}" executed successfully, notifying result')
+            await self._send_tool_result(tool_use_id, result, content_name)
+            logger.debug(f'🔧 Notified of successful "{tool_name}" invocation')
+        except Exception as e:
+            logger.error(f'Error executing tool "{tool_name}"', exc_info=e)
+            try:
+                await self._send_tool_result(
+                    tool_use_id,
+                    f'Error executing tool "{tool_name}": {str(e)}',
+                    content_name,
+                )
+            except Exception as send_error:
+                logger.error('Failed to send tool error response', exc_info=send_error)
+
     @override
-    async def on_completion_start(self, event):
+    async def on_completion_start(self, event: CompletionStartEvent):
         logger.info(
             f'🚀 COMPLETION START - Session: {event.session_id}, '
             f'Prompt: {event.prompt_name}, Completion: {event.completion_id}'
         )
 
     @override
-    async def on_content_start(self, event):
+    async def on_content_start(self, event: ContentStartEvent):
         speculative_info = ''
         if hasattr(event, 'additional_model_fields') and event.additional_model_fields:
             speculative_info = f' [{event.additional_model_fields}]'
@@ -221,38 +253,68 @@ class BedrockStreamManager(StreamEventHandler):
     @override
     async def on_audio_output(self, event: AudioOutputEvent):
         audio_bytes = base64.b64decode(event.content)
-        logger.info(
+        logger.debug(
             f'🔊 AUDIO OUTPUT: {len(audio_bytes)} bytes, Content ID: {event.content_id}'
         )
         assert self._audio is not None
         await self._audio.speak(audio_bytes)
 
     @override
-    async def on_content_end(self, event):
+    async def on_tool_use(self, event: ToolUseEvent):
+        logger.info(
+            f'🔧 TOOL USE - Tool: {event.tool_name}, ID: {event.tool_use_id}, CONTENT: '
+            f'{event.content}'
+        )
+        self._tool_use_id = event.tool_use_id
+        self._tool_name = event.tool_name
+        self._tool_use_content = event.content
+
+    def _on_tool_completion(self, task: asyncio.Task, content_name: str):
+        if content_name in self._tool_tasks:
+            del self._tool_tasks[content_name]
+
+        if task.done() and not task.cancelled():
+            exception = task.exception()
+            if exception:
+                logger.warning('Tool task failed', exc_info=exception)
+
+    @override
+    async def on_content_end(self, event: ContentEndEvent):
         logger.info(
             f'🏁 CONTENT END - Type: {event.type}, Stop Reason: {event.stop_reason}, '
             f'Content ID: {event.content_id}'
         )
 
+        # For...reasons...we invoke the tool after receiving a content end event rather
+        # than a tool-use event
+        if event.type == 'TOOL':
+            tool_content_name = str(uuid.uuid4())
+            task = asyncio.create_task(
+                self._execute_tool(
+                    self._tool_name,
+                    self._tool_use_id,
+                    self._tool_use_content,
+                    tool_content_name,
+                )
+            )
+            self._tool_tasks[tool_content_name] = task
+            task.add_done_callback(
+                lambda t: self._on_tool_completion(t, tool_content_name)
+            )
+
     @override
-    async def on_completion_end(self, event):
+    async def on_completion_end(self, event: CompletionEndEvent):
         logger.info(
             f'✅ COMPLETION END - Stop Reason: {event.stop_reason}, '
             f'Completion ID: {event.completion_id}'
         )
 
     @override
-    async def on_usage(self, event):
-        logger.info(
+    async def on_usage(self, event: UsageEvent):
+        logger.debug(
             f'📊 USAGE - Input: {event.total_input_tokens}, '
             f'Output: {event.total_output_tokens}, Total: {event.total_tokens}'
         )
-
-    @override
-    async def on_tool_use(self, event: ToolUseEvent):
-        logger.info(f'🔧 TOOL USE - Tool: {event.tool_name}, ID: {event.tool_use_id}')
-        # TODO: Invoke Tools
-        pass
 
     async def initialize(self) -> Self:
         """Initialize the stream manager and audio interface"""
@@ -273,6 +335,9 @@ class BedrockStreamManager(StreamEventHandler):
         logger.info(
             f'🎙️ Creating AudioOutputConfiguration with voice_id: "{self._voice_name}"'
         )
+        logger.info(
+            f'{ToolConfiguration(tools=nova_tools.specs()).model_dump_json(by_alias=True)}'
+        )
         await self._send_event(
             PromptStart(
                 prompt_start=PromptStartPayload(
@@ -282,7 +347,7 @@ class BedrockStreamManager(StreamEventHandler):
                         voice_id=self._voice_name
                     ),
                     tool_use_output_configuration=ToolUseOutputConfiguration(),
-                    tool_configuration=ToolConfiguration(tools=[]),
+                    tool_configuration=ToolConfiguration(tools=nova_tools.specs()),
                 )
             )
         )
@@ -376,7 +441,7 @@ class BedrockStreamManager(StreamEventHandler):
         self._br_stream = None
 
     async def __aenter__(self) -> Self:
-        """Async context manager entry - returns self without initialization"""
+        """Async context manager entry - returns self"""
         return await self.initialize()
 
     async def __aexit__(self, exc_type, exc_val, exc_tb):
