@@ -6,7 +6,7 @@ import sys
 from cosmovoice import BedrockStreamManager
 from dotenv import load_dotenv
 
-from tools import server_is_connected
+from tools import nova_tools, server_is_connected
 
 load_dotenv()
 root = logging.getLogger()
@@ -24,7 +24,7 @@ async def main(system_prompt: str):
     if not await server_is_connected():
         sys.exit('Cosmo Server not running')
 
-    async with BedrockStreamManager(system_prompt):
+    async with BedrockStreamManager(system_prompt, tools=nova_tools):
         # Wait for the user to hit enter
         await asyncio.get_event_loop().run_in_executor(None, input)
 
