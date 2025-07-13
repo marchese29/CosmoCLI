@@ -6,7 +6,7 @@ import sys
 from cosmovoice import BedrockStreamManager
 from dotenv import load_dotenv
 
-from tools import nova_tools, server_is_connected
+from .tools import nova_tools, server_is_connected
 
 load_dotenv()
 root = logging.getLogger()
@@ -18,7 +18,7 @@ handler.setFormatter(formatter)
 root.addHandler(handler)
 
 
-async def main(system_prompt: str):
+async def _main(system_prompt: str):
     """Main entry point for the program"""
 
     if not await server_is_connected():
@@ -29,8 +29,13 @@ async def main(system_prompt: str):
         await asyncio.get_event_loop().run_in_executor(None, input)
 
 
-if __name__ == '__main__':
+def main():
     current_dir = os.path.dirname(os.path.abspath(__file__))
     with open(os.path.join(current_dir, 'cosmo_prompt.txt')) as f:
         system_prompt = f.read()
-    asyncio.run(main(system_prompt))
+    asyncio.run(_main(system_prompt))
+    return 0
+
+
+if __name__ == '__main__':
+    sys.exit(main())

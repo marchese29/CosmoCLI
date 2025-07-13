@@ -10,6 +10,12 @@ dependencies = [
     "httpx>=0.28.1",
 ]
 
+[tool.uv]
+package = true
+
+[project.scripts]
+cosmo = "cosmocli.cli:main"
+
 [dependency-groups]
 dev = [
     "pyright>=1.1.402",
