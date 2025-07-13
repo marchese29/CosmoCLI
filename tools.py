@@ -2,8 +2,7 @@ import logging
 import os
 
 import httpx
-
-from util import SonicTools
+from cosmovoice import SonicTools
 
 logger = logging.getLogger(__name__)
 

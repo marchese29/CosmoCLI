@@ -5,11 +5,9 @@ description = "One client for the Cosmo home assistant"
 readme = "README.md"
 requires-python = ">=3.12"
 dependencies = [
-    "aws-sdk-bedrock-runtime>=0.0.2",
+    "cosmovoice",
     "dotenv>=0.9.9",
     "httpx>=0.28.1",
-    "pyaudio>=0.2.14",
-    "pydantic>=2.11.7",
 ]
 
 [dependency-groups]
@@ -43,3 +41,6 @@ runtime-evaluated-decorators = []
 quote-style = "single"
 # Indent with spaces
 indent-style = "space"
+
+[tool.uv.sources]
+cosmovoice = { git = "https://github.com/marchese29/CosmoVoice" }

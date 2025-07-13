@@ -3,9 +3,9 @@ import logging
 import os
 import sys
 
+from cosmovoice import BedrockStreamManager
 from dotenv import load_dotenv
 
-from bedrock.stream import BedrockStreamManager
 from tools import server_is_connected
 
 load_dotenv()

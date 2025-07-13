@@ -86,11 +86,9 @@ name = "cosmocli"
 version = "0.1.0"
 source = { virtual = "." }
 dependencies = [
-    { name = "aws-sdk-bedrock-runtime" },
+    { name = "cosmovoice" },
     { name = "dotenv" },
     { name = "httpx" },
-    { name = "pyaudio" },
-    { name = "pydantic" },
 ]
 
 [package.dev-dependencies]
@@ -101,17 +99,25 @@ dev = [
 
 [package.metadata]
 requires-dist = [
-    { name = "aws-sdk-bedrock-runtime", specifier = ">=0.0.2" },
+    { name = "cosmovoice", git = "https://github.com/marchese29/CosmoVoice" },
     { name = "dotenv", specifier = ">=0.9.9" },
     { name = "httpx", specifier = ">=0.28.1" },
-    { name = "pyaudio", specifier = ">=0.2.14" },
-    { name = "pydantic", specifier = ">=2.11.7" },
 ]
 
 [package.metadata.requires-dev]
 dev = [
     { name = "pyright", specifier = ">=1.1.402" },
     { name = "ruff", specifier = ">=0.12.2" },
+]
+
+[[package]]
+name = "cosmovoice"
+version = "0.1.0"
+source = { git = "https://github.com/marchese29/CosmoVoice#5f1e85478f9ce169b3f9cd4582da710b6f7af042" }
+dependencies = [
+    { name = "aws-sdk-bedrock-runtime" },
+    { name = "pyaudio" },
+    { name = "pydantic" },
 ]
 
 [[package]]
